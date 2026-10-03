@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Layout/Sidebar";
 import Header from "@/components/Layout/Header";
+import ActivityWatcher from "@/components/Layout/ActivityWatcher";
 import { useAuthStore } from "@/store/authStore";
 
 export default function MainLayout({
@@ -26,11 +27,14 @@ export default function MainLayout({
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+      <ActivityWatcher />
       <Sidebar />
       <div className="flex h-screen min-w-0 flex-1 flex-col">
         <Header />
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <div className="fade-in mx-auto w-full max-w-[1400px] px-6 py-6 lg:px-8">{children}</div>
+        </main>
       </div>
     </div>
   );

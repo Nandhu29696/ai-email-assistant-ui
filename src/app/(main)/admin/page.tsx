@@ -4,12 +4,17 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, Shield, ShieldCheck, UserX, UserCheck,
-  Plus, Search, RefreshCw, Server, Mail, MessageSquare,
+  Plus, Search, RefreshCw, Server, Mail, MessageSquare, KeyRound,
 } from "lucide-react";
+import FailedJobsPanel from "@/components/Admin/FailedJobsPanel";
+import OpsAlertsPanel from "@/components/Admin/OpsAlertsPanel";
 import api from "@/lib/api";
 import LoadingSpinner from "@/components/UI/LoadingSpinner";
+import Pagination, { usePagination } from "@/components/UI/Pagination";
 import type { UserOut, SystemStats } from "@/types";
 import { showError, showSuccess } from "@/lib/notifications";
+import PageHeader from "@/components/UI/PageHeader";
+import { ShieldCheck as ShieldCheckIcon } from "lucide-react";
 
 // ── Queries ────────────────────────────────────────────────────
 
@@ -74,7 +79,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
                 placeholder={placeholder}
                 value={form[key as keyof typeof form]}
                 onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
             </div>
           ))}
@@ -83,7 +88,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
             <select
               value={form.role}
               onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value="client">Client</option>
               <option value="admin">Admin</option>
@@ -102,7 +107,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
             <button
               onClick={() => mutation.mutate(form)}
               disabled={mutation.isPending || !form.username || !form.email || !form.password}
-              className="flex-1 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors disabled:opacity-60"
+              className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors disabled:opacity-60"
             >
               {mutation.isPending ? "Creating…" : "Create User"}
             </button>
@@ -143,12 +148,12 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
             <label className="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
             <input type="text" value={form.full_name}
               onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
             <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as "admin" | "client" }))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
               <option value="client">Client</option>
               <option value="admin">Admin</option>
             </select>
@@ -158,12 +163,12 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
             <input type="password" value={form.new_password}
               onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))}
               placeholder="Enter new password…"
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="is_active" checked={form.is_active}
               onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))}
-              className="rounded border-slate-300 text-blue-600" />
+              className="rounded border-slate-300 text-indigo-600" />
             <label htmlFor="is_active" className="text-sm text-slate-600">Account Active</label>
           </div>
           {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{err}</p>}
@@ -173,7 +178,7 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
               Cancel
             </button>
             <button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}
-              className="flex-1 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-60">
+              className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-60">
               {mutation.isPending ? "Saving…" : "Save Changes"}
             </button>
           </div>
@@ -193,7 +198,14 @@ export default function AdminPage() {
   const [editUser, setEditUser]   = useState<UserOut | null>(null);
 
   const { data: users, isLoading } = useUsers(search, roleFilter);
+  const userPage = usePagination(users);
   const { data: stats }            = useSystemStats();
+
+  const resetMfaMutation = useMutation({
+    mutationFn: (id: number) => api.patch(`/api/admin/users/${id}`, { reset_mfa: true }).then(r => r.data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-users"] }); showSuccess("Two-factor authentication reset."); },
+    onError: (error) => showError(error, "Could not reset MFA."),
+  });
 
   const deactivateMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/api/admin/users/${id}`).then(r => r.data),
@@ -208,19 +220,15 @@ export default function AdminPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Admin Panel</h1>
-        <p className="text-sm text-slate-500 mt-0.5">User management and system overview</p>
-      </div>
+      <PageHeader icon={ShieldCheckIcon} title="Users & jobs" description="Manage users, alerts and background jobs that need attention." />
 
       {/* System stats */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatTile icon={Users}          label="Total Users"     value={stats.users.total}           color="text-blue-600 bg-blue-50" />
+          <StatTile icon={Users}          label="Total Users"     value={stats.users.total}           color="text-indigo-600 bg-indigo-50" />
           <StatTile icon={ShieldCheck}    label="Active Sessions" value={stats.sessions.active}       color="text-green-600 bg-green-50" />
           <StatTile icon={Mail}           label="Total Emails"    value={stats.emails.total}          color="text-violet-600 bg-violet-50" />
-          <StatTile icon={MessageSquare}  label="Sent Replies"    value={stats.replies.sent}          color="text-teal-600 bg-teal-50" />
+          <StatTile icon={MessageSquare}  label="Auto-replies Sent" value={stats.replies.sent}          color="text-teal-600 bg-teal-50" />
         </div>
       )}
 
@@ -228,9 +236,9 @@ export default function AdminPage() {
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatTile icon={Shield}     label="Admin Users"       value={stats.users.admins}             color="text-purple-600 bg-purple-50" />
-          <StatTile icon={Users}      label="Client Users"      value={stats.users.employees}          color="text-indigo-600 bg-indigo-50" />
+          <StatTile icon={Users}      label="Client Users"      value={stats.users.clients}          color="text-indigo-600 bg-indigo-50" />
           <StatTile icon={RefreshCw}  label="Emails Processed" value={stats.emails.processed}         color="text-emerald-600 bg-emerald-50" />
-          <StatTile icon={Server}     label="Reply Drafts"      value={stats.replies.drafts}          color="text-amber-600 bg-amber-50" />
+          <StatTile icon={Server}     label="Emails In Progress" value={stats.emails.unprocessed}      color="text-amber-600 bg-amber-50" />
         </div>
       )}
 
@@ -249,14 +257,14 @@ export default function AdminPage() {
             />
           </div>
           <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
-            className="text-sm border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            className="text-sm border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="">All Roles</option>
             <option value="admin">Admin</option>
             <option value="client">Client</option>
           </select>
           <button
             onClick={() => setShowRegister(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
           >
             <Plus size={14} />
             New User
@@ -277,11 +285,11 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {(users ?? []).map((u) => (
+                {userPage.rows.map((u) => (
                   <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
                           {(u.full_name || u.username)[0].toUpperCase()}
                         </div>
                         <div>
@@ -295,7 +303,7 @@ export default function AdminPage() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${
                         u.role === "admin"
                           ? "text-purple-700 bg-purple-50 border-purple-200"
-                          : "text-blue-700 bg-blue-50 border-blue-200"
+                          : "text-indigo-700 bg-indigo-50 border-indigo-200"
                       }`}>
                         {u.role === "admin" ? <ShieldCheck size={10} className="inline mr-1" /> : null}
                         {u.role}
@@ -316,11 +324,22 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => setEditUser(u)}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                          className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
                           title="Edit"
                         >
                           <UserCheck size={14} />
                         </button>
+                        {u.mfa_enabled && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Reset two-factor authentication for @${u.username}? They will sign in with just their password until they enroll again.`)) resetMfaMutation.mutate(u.id);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
+                            title="Reset MFA"
+                          >
+                            <KeyRound size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             if (confirm(`Deactivate @${u.username}?`)) deactivateMutation.mutate(u.id);
@@ -342,10 +361,12 @@ export default function AdminPage() {
             </table>
           </div>
         )}
-        <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
-          <p className="text-xs text-slate-400">{users?.length ?? 0} user{users?.length !== 1 ? "s" : ""} shown</p>
-        </div>
+        <Pagination {...userPage.props} label="users" />
       </div>
+
+      {/* Dead-letter queue */}
+      <OpsAlertsPanel />
+      <FailedJobsPanel />
 
       {/* Modals */}
       {showRegister && (

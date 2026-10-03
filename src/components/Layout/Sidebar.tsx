@@ -2,144 +2,91 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard, Inbox, Settings, Zap,
-  BarChart3, MessageSquareReply, ScrollText, FileText,
-  ShieldCheck, ChevronLeft, ChevronRight,
-} from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-
-const NAV_COMMON = [
-  { href: "/dashboard",     label: "Dashboard",    icon: LayoutDashboard },
-  { href: "/inbox",         label: "Inbox",        icon: Inbox },
-  { href: "/analytics",     label: "Analytics",    icon: BarChart3 },
-  { href: "/reply-tracker", label: "Reply Tracker", icon: MessageSquareReply },
-  { href: "/integrations",  label: "Integrations", icon: Zap },
-  { href: "/document-intake", label: "Document Intake", icon: FileText },
-  { href: "/settings",      label: "Settings",     icon: Settings },
-];
-
-const NAV_ADMIN = [
-  { href: "/admin",  label: "Admin",  icon: ShieldCheck },
-  { href: "/logs",   label: "Logs",   icon: ScrollText },
-];
+import Logo from "@/components/UI/Logo";
+import { NAV_GROUPS } from "@/components/Layout/nav";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const user     = useAuthStore((s) => s.user);
+  const user = useAuthStore((s) => s.user);
   const [collapsed, setCollapsed] = useState(false);
-
   const isAdmin = user?.role === "admin";
-  const allNav  = isAdmin ? [...NAV_COMMON, ...NAV_ADMIN] : NAV_COMMON;
+
+  // Emails that need a person (system errors) — shown as a badge next to "Processed emails".
+  const attention = useQuery<{ total: number }>({
+    queryKey: ["batches", "attention-count"],
+    queryFn: () => api.get("/api/document-intake/batches", { params: { status: "FAILED", page_size: 1, days: 30 } }).then((r) => r.data),
+    refetchInterval: 60_000,
+    enabled: !!user,
+  }).data?.total ?? 0;
 
   return (
     <aside
       className={cn(
-        "sticky top-0 z-30 flex h-screen flex-shrink-0 flex-col overflow-hidden bg-slate-900 transition-all duration-200",
-        collapsed ? "w-16" : "w-56"
+        "sticky top-0 z-30 flex h-screen flex-shrink-0 flex-col overflow-hidden bg-slate-950 transition-[width] duration-200",
+        collapsed ? "w-[4.5rem]" : "w-64",
       )}
     >
-      {/* Logo */}
-      <div className={cn(
-        "flex items-center border-b border-slate-700/60",
-        collapsed ? "px-4 py-5 justify-center" : "px-5 py-5 gap-2"
-      )}>
-        <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-          <span className="text-white text-xs font-bold">M</span>
-        </div>
-        {!collapsed && (
-          <span className="text-lg font-bold text-white">MailAI</span>
-        )}
+      <div className={cn("flex h-16 items-center border-b border-white/5", collapsed ? "justify-center" : "px-5")}>
+        <Link href="/dashboard" aria-label="MailAI dashboard"><Logo dark collapsed={collapsed} /></Link>
       </div>
 
-      {/* Navigation */}
-      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-4">
-        {/* Common nav */}
-        {NAV_COMMON.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4" aria-label="Main">
+        {NAV_GROUPS.map((group) => {
+          const items = group.items.filter((item) => !item.admin || isAdmin);
+          if (items.length === 0) return null;
           return (
-            <Link
-              key={href}
-              href={href}
-              title={collapsed ? label : undefined}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
-                active
-                  ? "bg-blue-600 text-white shadow-md"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-100",
-                collapsed && "justify-center"
+            <div key={group.title} className="mb-5">
+              {collapsed ? <div className="mx-2 mb-2 border-t border-white/5" /> : (
+                <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{group.title}</p>
               )}
-            >
-              <Icon size={18} className="flex-shrink-0" />
-              {!collapsed && label}
-            </Link>
+              <ul className="space-y-0.5">
+                {items.map(({ href, label, icon: Icon }) => {
+                  const active = pathname.startsWith(href);
+                  const badge = href === "/emails" && attention > 0 ? attention : 0;
+                  return (
+                    <li key={href}>
+                      <Link
+                        href={href}
+                        title={collapsed ? label : undefined}
+                        aria-current={active ? "page" : undefined}
+                        className={cn(
+                          "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                          active ? "bg-indigo-500/15 text-white" : "text-slate-400 hover:bg-white/5 hover:text-slate-100",
+                          collapsed && "justify-center px-0",
+                        )}
+                      >
+                        {active && <span className="absolute inset-y-2 left-0 w-1 rounded-r bg-indigo-400" />}
+                        <Icon size={18} className={cn("flex-shrink-0", active ? "text-indigo-300" : "text-slate-500 group-hover:text-slate-300")} />
+                        {!collapsed && <span className="flex-1 truncate">{label}</span>}
+                        {badge > 0 && (
+                          <span title={`${badge} need attention`} className={cn(
+                            "rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-4 text-white",
+                            collapsed && "absolute right-2 top-1.5",
+                          )}>{badge > 99 ? "99+" : badge}</span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           );
         })}
-
-        {/* Admin-only section */}
-        {isAdmin && (
-          <>
-            <div className={cn(
-              "pt-4 pb-1",
-              collapsed ? "px-0" : "px-3"
-            )}>
-              {!collapsed && (
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
-                  Admin
-                </p>
-              )}
-              {collapsed && <div className="border-t border-slate-700 my-1" />}
-            </div>
-            {NAV_ADMIN.map(({ href, label, icon: Icon }) => {
-              const active = pathname.startsWith(href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  title={collapsed ? label : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
-                    active
-                      ? "bg-purple-600 text-white shadow-md"
-                      : "text-slate-400 hover:bg-slate-800 hover:text-slate-100",
-                    collapsed && "justify-center"
-                  )}
-                >
-                  <Icon size={18} className="flex-shrink-0" />
-                  {!collapsed && label}
-                </Link>
-              );
-            })}
-          </>
-        )}
       </nav>
 
-      {/* User info */}
-      {!collapsed && user && (
-        <div className="px-4 py-3 border-t border-slate-700/60">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {(user.full_name || user.username)[0].toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-200 truncate">
-                {user.full_name || user.username}
-              </p>
-              <p className="text-[10px] text-slate-500 capitalize">{user.role}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Collapse toggle */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="flex items-center justify-center p-3 border-t border-slate-700/60 text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+        className="flex h-12 items-center justify-center gap-2 border-t border-white/5 text-xs text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-300"
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        {collapsed ? <ChevronRight size={16} /> : <><ChevronLeft size={16} /> Collapse</>}
       </button>
     </aside>
   );

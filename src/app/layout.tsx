@@ -1,12 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import "react-notifications/lib/notifications.css";
 import Providers from "./providers";
 
+const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
+
 export const metadata: Metadata = {
-  title: "MailAI — AI Email Assistant",
-  description: "Intelligent email triage, analysis and reply generation",
+  title: { default: "MailAI · Email Intake", template: "%s · MailAI" },
+  description: "Automatic email intake: domain check, acknowledgement, attachment validation, PDF conversion and merge.",
+  applicationName: "MailAI",
 };
+
+export const viewport: Viewport = { themeColor: "#4f46e5" };
 
 export default function RootLayout({
   children,
@@ -14,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body className="bg-slate-50 text-slate-900 antialiased">
         <Providers>{children}</Providers>
       </body>

@@ -1,22 +1,10 @@
 import { cn } from "@/lib/utils";
+import { TONE_CLASSES, type Tone } from "@/lib/intake";
 import type { ReactNode } from "react";
 
-interface BadgeProps {
-  children: ReactNode;
-  colorClass?: string;
-}
-
-export default function Badge({
-  children,
-  colorClass = "text-slate-600 bg-slate-100",
-}: BadgeProps) {
+export default function Badge({ children, tone = "slate", className }: { children: ReactNode; tone?: Tone; className?: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold",
-        colorClass
-      )}
-    >
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset", TONE_CLASSES[tone], className)}>
       {children}
     </span>
   );

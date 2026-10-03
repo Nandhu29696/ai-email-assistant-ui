@@ -1,110 +1,110 @@
 import axios, { AxiosInstance } from "axios";
+import type { QueryClient } from "@tanstack/react-query";
+import { API_BASE_URL, AUTH_STORAGE_KEY, CSRF_COOKIE, CSRF_HEADER } from "@/lib/config";
+import { useAuthStore } from "@/store/authStore";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ;
-
+// Auth lives in httpOnly cookies set by the API; JavaScript never sees the tokens.
 const api: AxiosInstance = axios.create({
-  baseURL: BASE,
+  baseURL: API_BASE_URL,
   timeout: 30_000,
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
 
-// ── Helper: read stored auth state ────────────────────────────
-function getStoredAuth(): { access_token?: string; refresh_token?: string } {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem("mail-ai-auth");
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    const user = parsed?.state?.user;
-    return {
-      access_token:  user?.access_token,
-      refresh_token: user?.refresh_token,
-    };
-  } catch {
-    return {};
-  }
+// Set by <Providers> so a forced logout can also drop cached server data.
+let registeredQueryClient: QueryClient | null = null;
+export function registerQueryClient(client: QueryClient) {
+  registeredQueryClient = client;
 }
 
-function setStoredTokens(access_token: string, refresh_token: string) {
+export function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.split("; ").find((row) => row.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+
+/** Headers for state-changing requests (double-submit CSRF token). */
+export function csrfHeaders(): Record<string, string> {
+  const token = readCookie(CSRF_COOKIE);
+  return token ? { [CSRF_HEADER]: token } : {};
+}
+
+/** Clear the local session and every cached query (prevents the next user seeing stale data). */
+export function clearSession() {
+  useAuthStore.getState().logout();
   try {
-    const raw = localStorage.getItem("mail-ai-auth");
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed?.state?.user) {
-      parsed.state.user.access_token  = access_token;
-      parsed.state.user.refresh_token = refresh_token;
-      localStorage.setItem("mail-ai-auth", JSON.stringify(parsed));
-    }
+    localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch {
     // ignore
   }
+  registeredQueryClient?.clear();
 }
 
-// ── Request interceptor — attach JWT ──────────────────────────
+// ── Request interceptor — CSRF header on writes ───────────────
 api.interceptors.request.use((config) => {
-  const { access_token } = getStoredAuth();
-  if (access_token) {
-    config.headers["Authorization"] = `Bearer ${access_token}`;
+  const method = (config.method || "get").toUpperCase();
+  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+    Object.assign(config.headers, csrfHeaders());
   }
   return config;
 });
 
-// ── Response interceptor — auto-refresh on 401 ────────────────
-let _refreshPromise: Promise<boolean> | null = null;
+// ── Token refresh (shared by HTTP and WebSocket clients) ──────
+let refreshPromise: Promise<boolean> | null = null;
 
+/** Rotate the session using the httpOnly refresh cookie. Concurrent callers share one request. */
+export function refreshTokens(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/api/auth/refresh`, undefined, { withCredentials: true })
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function redirectToLogin() {
+  clearSession();
+  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+    window.location.href = "/login";
+  }
+}
+
+// ── Response interceptor — auto-refresh on 401 ────────────────
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const originalRequest = err.config;
     const status = err.response?.status;
 
-    // Map FastAPI error detail string into err.message
-    const detail = err.response?.data?.detail;
+    // Map FastAPI error detail into err.message (blob responses carry it as JSON text).
+    let detail = err.response?.data?.detail;
+    if (!detail && err.response?.data instanceof Blob) {
+      try {
+        detail = JSON.parse(await err.response.data.text()).detail;
+      } catch {
+        // not JSON
+      }
+    }
     if (detail) {
       err.message = typeof detail === "string" ? detail : JSON.stringify(detail);
     }
 
-    // Ignore 401 on login or refresh endpoint to avoid refresh loops
-    const isAuthEndpoint = originalRequest?.url?.includes("/api/auth/login") || originalRequest?.url?.includes("/api/auth/refresh");
+    const url: string = originalRequest?.url || "";
+    const isAuthEndpoint = ["/api/auth/login", "/api/auth/refresh", "/api/auth/mfa/verify", "/api/auth/logout"]
+      .some((path) => url.includes(path));
 
-    // Attempt token refresh on 401 (once per request)
-    if (status === 401 && !originalRequest._retried && !isAuthEndpoint && typeof window !== "undefined") {
+    if (status === 401 && originalRequest && !originalRequest._retried && !isAuthEndpoint && typeof window !== "undefined") {
       originalRequest._retried = true;
-      const { refresh_token } = getStoredAuth();
-
-      if (refresh_token) {
-        // Serialize concurrent refresh attempts into one call
-        if (!_refreshPromise) {
-          _refreshPromise = axios
-            .post(`${BASE}/api/auth/refresh`, { refresh_token })
-            .then((r) => {
-              const { access_token, refresh_token: new_rt } = r.data;
-              setStoredTokens(access_token, new_rt);
-              // Also update in-memory Zustand store if available
-              try {
-                const { useAuthStore } = require("@/store/authStore");
-                useAuthStore.getState().updateTokens(access_token, new_rt);
-              } catch {}
-              return true;
-            })
-            .catch(() => false)
-            .finally(() => { _refreshPromise = null; });
-        }
-
-        const refreshed = await _refreshPromise;
-        if (refreshed) {
-          // Retry with new token
-          const { access_token } = getStoredAuth();
-          originalRequest.headers["Authorization"] = `Bearer ${access_token}`;
-          return api(originalRequest);
-        }
+      if (await refreshTokens()) {
+        return api(originalRequest);
       }
-
-      // Refresh failed or no refresh token — force logout if not on login page
-      localStorage.removeItem("mail-ai-auth");
-      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+      redirectToLogin();
+    } else if (status === 403 && typeof detail === "string" && detail.toLowerCase().includes("account") && detail.toLowerCase().includes("locked")) {
+      redirectToLogin();
     }
 
     return Promise.reject(err);

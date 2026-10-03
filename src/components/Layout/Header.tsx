@@ -1,98 +1,88 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Search, LogOut, User } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEmailStore } from "@/store/emailStore";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, LogOut, Settings } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
-import { useNotifications } from "@/hooks/useNotifications";
-import NotificationPanel from "./NotificationPanel";
-import api from "@/lib/api";
+import api, { clearSession } from "@/lib/api";
+import SystemStatus from "@/components/Layout/SystemStatus";
+import NotificationBell from "@/components/Layout/NotificationBell";
+import { findNav } from "@/components/Layout/nav";
 
 export default function Header() {
-  const unreadCount = useEmailStore((s) => s.unreadCount);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
+  const page = findNav(pathname);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
 
-  const { markRead, markAllRead } = useNotifications();
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => { if (menu.current && !menu.current.contains(e.target as Node)) setMenuOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
 
   async function handleLogout() {
-    if (user?.refresh_token) {
-      try {
-        await api.post("/api/auth/logout", { refresh_token: user.refresh_token });
-      } catch {
-        // ignore — still log out locally
-      }
+    try {
+      await api.post("/api/auth/logout"); // revokes the session and clears auth cookies
+    } catch {
+      // ignore — still log out locally
     }
-    logout();
+    clearSession();
     router.push("/login");
   }
 
-  const initials = user
-    ? (user.full_name || user.username).substring(0, 2).toUpperCase()
-    : "?";
+  const name = user ? user.full_name || user.username : "";
+  const initials = name ? name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase() : "?";
 
   return (
-    <header className="h-14 flex items-center gap-4 px-6 bg-white border-b border-slate-200 relative z-20">
-      {/* Search */}
-      <div className="flex items-center flex-1 max-w-md bg-slate-50 rounded-xl px-3 py-1.5 gap-2 border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-200 transition-all">
-        <Search size={15} className="text-slate-400 flex-shrink-0" />
-        <input
-          type="text"
-          placeholder="Search emails…"
-          className="bg-transparent text-sm outline-none w-full placeholder:text-slate-400"
-        />
-      </div>
+    <header className="relative z-20 flex h-16 flex-shrink-0 items-center gap-4 border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur">
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+        <span className="text-slate-400">{page?.group ?? "MailAI"}</span>
+        {page && (
+          <>
+            <ChevronRight size={14} className="text-slate-300" />
+            <span className="truncate font-semibold text-slate-800">{page.label}</span>
+          </>
+        )}
+      </nav>
 
-      <div className="ml-auto flex items-center gap-2">
-        {/* Notification bell */}
-        <button
-          onClick={() => setPanelOpen((o) => !o)}
-          className="relative p-2 rounded-xl hover:bg-slate-100 transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell size={19} className="text-slate-600" />
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 h-4 w-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-semibold">
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
-
-        {/* User chip */}
+      <div className="ml-auto flex items-center gap-3">
+        <SystemStatus />
+        <span className="hidden h-6 w-px bg-slate-200 md:block" />
+        <NotificationBell />
         {user && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-              {initials}
-            </div>
-            <div className="hidden sm:block text-right min-w-0">
-              <p className="text-xs font-semibold text-slate-700 leading-tight truncate max-w-[120px]">
-                {user.full_name || user.username}
-              </p>
-              <p className="text-[10px] text-slate-400 capitalize">{user.role}</p>
-            </div>
+          <div className="relative" ref={menu}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-label="Account menu"
+              aria-expanded={menuOpen}
+              className="flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 transition-colors hover:bg-slate-100"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-bold text-white">{initials}</span>
+              <span className="hidden text-left sm:block">
+                <span className="block max-w-[140px] truncate text-xs font-semibold leading-tight text-slate-800">{name}</span>
+                <span className="block text-[10px] capitalize text-slate-400">{user.role}</span>
+              </span>
+              <ChevronDown size={14} className="text-slate-400" />
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10">
+                <p className="truncate border-b border-slate-100 px-3 py-2 text-xs text-slate-500">Signed in as @{user.username}</p>
+                <Link href="/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <Settings size={15} /> Settings
+                </Link>
+                <button onClick={handleLogout} aria-label="Sign out" className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
+                  <LogOut size={15} /> Sign out
+                </button>
+              </div>
+            )}
           </div>
         )}
-
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          className="p-2 rounded-xl hover:bg-red-50 hover:text-red-600 text-slate-500 transition-colors"
-          aria-label="Sign out"
-          title="Sign out"
-        >
-          <LogOut size={18} />
-        </button>
       </div>
-
-      {panelOpen && (
-        <NotificationPanel
-          onClose={() => setPanelOpen(false)}
-          markRead={markRead}
-          markAllRead={markAllRead}
-        />
-      )}
     </header>
   );
 }
