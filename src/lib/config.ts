@@ -1,5 +1,5 @@
 // Public endpoints are baked in at build time from NEXT_PUBLIC_* env vars.
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://187.127.166.46:8002").replace(/\/$/, "");
 
 export const WS_BASE_URL = (
   process.env.NEXT_PUBLIC_WS_URL || API_BASE_URL
