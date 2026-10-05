@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 
-const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://187.127.166.46:8002").replace(/\/$/, "");
 const wsUrl = (process.env.NEXT_PUBLIC_WS_URL || apiUrl).replace(/^http/, "ws").replace(/\/$/, "");
 const isProd = process.env.NODE_ENV === "production";
 
