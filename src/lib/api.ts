@@ -3,7 +3,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { API_BASE_URL, AUTH_STORAGE_KEY, CSRF_COOKIE, CSRF_HEADER } from "@/lib/config";
 import { useAuthStore } from "@/store/authStore";
 
-// Auth lives in httpOnly cookies set by the API; JavaScript never sees the tokens.
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30_000,
@@ -46,6 +45,10 @@ api.interceptors.request.use((config) => {
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
     Object.assign(config.headers, csrfHeaders());
   }
+  const accessToken = useAuthStore.getState().user?.access_token;
+  if (accessToken) {
+    Object.assign(config.headers, { Authorization: `Bearer ${accessToken}` });
+  }
   return config;
 });
 
@@ -55,9 +58,27 @@ let refreshPromise: Promise<boolean> | null = null;
 /** Rotate the session using the httpOnly refresh cookie. Concurrent callers share one request. */
 export function refreshTokens(): Promise<boolean> {
   if (!refreshPromise) {
+    const refreshToken = useAuthStore.getState().user?.refresh_token;
     refreshPromise = axios
-      .post(`${API_BASE_URL}/api/auth/refresh`, undefined, { withCredentials: true })
-      .then(() => true)
+      .post(
+        `${API_BASE_URL}/api/auth/refresh`,
+        refreshToken ? { refresh_token: refreshToken } : undefined,
+        {
+          headers: refreshToken ? { "X-Auth-Mode": "token" } : undefined,
+          withCredentials: true,
+        },
+      )
+      .then(({ data }) => {
+        const current = useAuthStore.getState().user;
+        if (current && (data.access_token || data.refresh_token)) {
+          useAuthStore.getState().setUser({
+            ...current,
+            access_token: data.access_token ?? current.access_token,
+            refresh_token: data.refresh_token ?? current.refresh_token,
+          });
+        }
+        return true;
+      })
       .catch(() => false)
       .finally(() => {
         refreshPromise = null;

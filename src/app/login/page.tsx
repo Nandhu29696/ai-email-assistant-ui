@@ -14,6 +14,8 @@ interface LoginResponse {
   username: string;
   full_name?: string | null;
   role: "admin" | "client";
+  access_token?: string;
+  refresh_token?: string;
   mfa_enabled?: boolean;
   mfa_required?: boolean;
   mfa_token?: string;
@@ -44,13 +46,14 @@ export default function LoginPage() {
   const [mfaCode,  setMfaCode]  = useState("");
 
   function finishLogin(data: LoginResponse) {
-    // The session lives in httpOnly cookies set by the API; only the profile is kept here.
     setUser({
       user_id:     data.user_id,
       username:    data.username,
       full_name:   data.full_name ?? null,
       role:        data.role,
       mfa_enabled: data.mfa_enabled,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
     });
     router.push("/dashboard");
   }
@@ -70,7 +73,13 @@ export default function LoginPage() {
       const { data } = await axios.post<LoginResponse>(
         `${API_BASE_URL}/api/auth/login`,
         form.toString(),
-        { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true },
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Auth-Mode": "token",
+          },
+          withCredentials: true,
+        },
       );
       if (data.mfa_required && data.mfa_token) {
         setMfaToken(data.mfa_token);
@@ -93,7 +102,7 @@ export default function LoginPage() {
       const { data } = await axios.post<LoginResponse>(
         `${API_BASE_URL}/api/auth/mfa/verify`,
         { mfa_token: mfaToken, code: mfaCode.trim() },
-        { withCredentials: true },
+        { headers: { "X-Auth-Mode": "token" }, withCredentials: true },
       );
       finishLogin(data);
     } catch (err: unknown) {

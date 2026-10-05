@@ -3,8 +3,7 @@ import { persist } from "zustand/middleware";
 import { AUTH_STORAGE_KEY } from "@/lib/config";
 
 /**
- * Signed-in user's profile. Tokens are NOT stored here: the API keeps them in
- * httpOnly cookies that JavaScript cannot read (XSS can't steal them).
+ * Signed-in user's profile and optional API-client tokens.
  */
 export interface AuthUser {
   user_id:      number;
@@ -12,6 +11,8 @@ export interface AuthUser {
   full_name:    string | null;
   role:         "admin" | "client";
   mfa_enabled?: boolean;
+  access_token?: string;
+  refresh_token?: string;
 }
 
 interface AuthStore {
@@ -43,6 +44,7 @@ export const useAuthStore = create<AuthStore>()(
           user: {
             user_id: user.user_id, username: user.username, full_name: user.full_name,
             role: user.role, mfa_enabled: user.mfa_enabled,
+            access_token: user.access_token, refresh_token: user.refresh_token,
           },
         };
       },

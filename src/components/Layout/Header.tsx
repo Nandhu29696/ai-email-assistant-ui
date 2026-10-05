@@ -27,7 +27,12 @@ export default function Header() {
 
   async function handleLogout() {
     try {
-      await api.post("/api/auth/logout"); // revokes the session and clears auth cookies
+      const refreshToken = useAuthStore.getState().user?.refresh_token;
+      await api.post(
+        "/api/auth/logout",
+        refreshToken ? { refresh_token: refreshToken } : undefined,
+        refreshToken ? { headers: { "X-Auth-Mode": "token" } } : undefined,
+      );
     } catch {
       // ignore — still log out locally
     }
