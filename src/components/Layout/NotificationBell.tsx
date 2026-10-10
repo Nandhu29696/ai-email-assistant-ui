@@ -50,7 +50,7 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div role="dialog" aria-label="Notifications" className="absolute right-0 top-12 z-50 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
+        <div role="dialog" aria-label="Notifications" className="fixed inset-x-3 top-16 z-50 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:w-96 rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-semibold text-slate-800">Notifications</p>
             <button onClick={markAllRead} disabled={!unread} className="text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:text-slate-300">

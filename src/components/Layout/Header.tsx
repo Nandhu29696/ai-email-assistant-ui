@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, LogOut, Settings } from "lucide-react";
+import { ChevronDown, ChevronRight, LogOut, Menu, Settings } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import api, { clearSession } from "@/lib/api";
@@ -10,7 +10,7 @@ import SystemStatus from "@/components/Layout/SystemStatus";
 import NotificationBell from "@/components/Layout/NotificationBell";
 import { findNav } from "@/components/Layout/nav";
 
-export default function Header() {
+export default function Header({ onMenu }: { onMenu?: () => void }) {
   const { user } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -44,18 +44,21 @@ export default function Header() {
   const initials = name ? name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase() : "?";
 
   return (
-    <header className="relative z-20 flex h-16 flex-shrink-0 items-center gap-4 border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur">
+    <header className="relative z-20 flex h-16 flex-shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white/90 px-3 backdrop-blur sm:gap-4 sm:px-6">
+      <button onClick={onMenu} aria-label="Open menu" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden">
+        <Menu size={20} />
+      </button>
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
-        <span className="text-slate-400">{page?.group ?? "MailAI"}</span>
+        <span className="hidden text-slate-400 sm:inline">{page?.group ?? "MailAI"}</span>
         {page && (
           <>
-            <ChevronRight size={14} className="text-slate-300" />
+            <ChevronRight size={14} className="hidden text-slate-300 sm:inline" />
             <span className="truncate font-semibold text-slate-800">{page.label}</span>
           </>
         )}
       </nav>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex flex-shrink-0 items-center gap-1 sm:gap-3">
         <SystemStatus />
         <span className="hidden h-6 w-px bg-slate-200 md:block" />
         <NotificationBell />

@@ -5,6 +5,7 @@ import type { BatchItem } from "@/types";
 function email(overrides: Partial<BatchItem>): BatchItem {
   return {
     id: 1, batch_no: "CLM-1", sender_name: "Alice", sender_email: "alice@client.com", recipient_email: "in@ours.com",
+    integration_id: 2, mailbox_email: "claims@ours.com", mailbox_provider: "gmail",
     subject: "Claim documents", status: "SUCCESS", outcome: "PROCESSED", status_reason: null, mailbox_type: "UAT",
     attachment_count: 1, sentiment: "neutral", sentiment_score: 0, primary_emotion: "neutral", email_category: "general",
     priority: "low", ai_summary: null, has_merged_pdf: true, is_archived: false, archived_at: null,
@@ -14,11 +15,11 @@ function email(overrides: Partial<BatchItem>): BatchItem {
 
 describe("notification text", () => {
   it("describes each result", () => {
-    expect(describeEmail(email({}))).toMatchObject({ title: "Email processed", tone: "success", important: false,
-      message: "Alice — Claim documents", href: "/emails?batch=CLM-1" });
-    expect(describeEmail(email({ status: "FAILED", outcome: "SYSTEM_ERROR" }))).toMatchObject({ title: "Email needs attention", tone: "error", important: true });
-    expect(describeEmail(email({ status: "REJECTED", outcome: "DOMAIN_NOT_ALLOWED" }))).toMatchObject({ title: "Rejected · Domain not valid", tone: "warning", important: true });
-    expect(describeEmail(email({ priority: "critical" }))).toMatchObject({ title: "Processed · critical priority", important: true });
+    expect(describeEmail(email({}))).toMatchObject({ title: "PDF ready", tone: "success", important: false,
+      message: "claims@ours.com · Alice — Claim documents", href: "/emails?batch=CLM-1", mailbox: "claims@ours.com" });
+    expect(describeEmail(email({ status: "FAILED", outcome: "SYSTEM_ERROR" }))).toMatchObject({ title: "Email needs attention — try again", tone: "error", important: true });
+    expect(describeEmail(email({ status: "REJECTED", outcome: "DOMAIN_NOT_ALLOWED" }))).toMatchObject({ title: "Sent back · Sender's domain not accepted", tone: "warning", important: true });
+    expect(describeEmail(email({ priority: "critical" }))).toMatchObject({ title: "PDF ready · critical priority", important: true });
   });
 
   it("filters to important emails when asked", () => {
@@ -27,6 +28,15 @@ describe("notification text", () => {
     expect(shouldPopUp(normal, { ...DEFAULT_PREFS, level: "all" })).toBe(true);
     expect(shouldPopUp(normal, { ...DEFAULT_PREFS, level: "important" })).toBe(false);
     expect(shouldPopUp(failed, { ...DEFAULT_PREFS, level: "important" })).toBe(true);
+  });
+
+  it("only announces the chosen mailboxes", () => {
+    const fromClaims = describeEmail(email({ integration_id: 2 }));
+    const fromInvoices = describeEmail(email({ integration_id: 3, mailbox_email: "invoices@ours.com" }));
+    const prefs = { ...DEFAULT_PREFS, mailboxes: [2] };
+    expect(shouldPopUp(fromClaims, prefs)).toBe(true);
+    expect(shouldPopUp(fromInvoices, prefs)).toBe(false);
+    expect(shouldPopUp(fromInvoices, DEFAULT_PREFS)).toBe(true);
   });
 });
 

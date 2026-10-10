@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import type { Integration } from "@/types";
 import { Bell, MonitorSmartphone } from "lucide-react";
 import { showDesktopNotification, useActivityStore, type NotifyLevel } from "@/lib/activity";
 import { showActivity, showError, showSuccess } from "@/lib/notifications";
@@ -21,6 +24,13 @@ export default function NotificationSection() {
   const prefs = useActivityStore((s) => s.prefs);
   const setPrefs = useActivityStore((s) => s.setPrefs);
   const [permission, setPermission] = useState<Permission>("default");
+  const mailboxes = useQuery<Integration[]>({
+    queryKey: ["integrations"],
+    queryFn: () => api.get("/api/integrations").then((r) => r.data),
+  });
+  const chosen = prefs.mailboxes ?? [];
+  const toggleMailbox = (id: number, on: boolean) =>
+    setPrefs({ mailboxes: on ? [...chosen.filter((x) => x !== id), id] : chosen.filter((x) => x !== id) });
 
   useEffect(() => {
     useActivityStore.getState().hydrate();
@@ -42,8 +52,9 @@ export default function NotificationSection() {
 
   function sendTest() {
     const notice = {
-      key: `test-${Date.now()}`, title: "Email processed", message: "Alice <alice@client.com> — Claim documents",
+      key: `test-${Date.now()}`, title: "Email processed", message: "claims@ours.com · Alice <alice@client.com> — Claim documents",
       tone: "success" as const, href: "/emails", at: new Date().toISOString(), important: false,
+      mailboxId: null, mailbox: "claims@ours.com",
     };
     if (prefs.popups) showActivity(notice.tone, notice.title, notice.message, notice.href);
     if (prefs.desktop) showDesktopNotification(notice);
@@ -81,7 +92,7 @@ export default function NotificationSection() {
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
             <p className="text-sm font-medium text-slate-800">Notify me about</p>
-            <p className="text-xs text-slate-500">&ldquo;Important&rdquo; = needs attention, rejected by a rule, or critical/high priority.</p>
+            <p className="text-xs text-slate-500">&ldquo;Important&rdquo; = needs attention, sent back to the sender, or critical/high priority.</p>
           </div>
           <select value={prefs.level} onChange={(e) => setPrefs({ level: e.target.value as NotifyLevel })} aria-label="Notify me about"
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm">
@@ -89,6 +100,20 @@ export default function NotificationSection() {
             <option value="important">Important emails only</option>
           </select>
         </div>
+        {(mailboxes.data ?? []).length > 1 && (
+          <div className="px-5 py-4">
+            <p className="text-sm font-medium text-slate-800">Mailboxes</p>
+            <p className="text-xs text-slate-500">Leave all unticked to be notified about every mailbox.</p>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              {(mailboxes.data ?? []).map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={chosen.includes(m.id)} onChange={(e) => toggleMailbox(m.id, e.target.checked)} />
+                  {m.email_address}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

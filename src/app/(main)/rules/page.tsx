@@ -16,7 +16,7 @@ export default function RulesPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 pb-8">
       <PageHeader icon={ListChecks} title="Rules & replies"
-        description="Which sender domains are valid (Rule 1) and the automatic reply sent at each step. File types and sizes are set per mailbox." />
+        description="Which senders are accepted and the automatic reply sent at each step. File types and sizes are set per mailbox." />
       {isAdmin && <DomainSection />}
       <TemplateSection canEdit={isAdmin} />
     </div>
@@ -59,13 +59,13 @@ function DomainSection() {
       <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4">
         <Globe size={16} className="text-slate-500" />
         <div>
-          <h2 className="font-semibold text-slate-700">Rule 1 · Valid sender domains</h2>
-          <p className="text-xs text-slate-500">Emails from other domains get the “domain not valid” reply. Sub-domains are included (mail.client.com matches client.com). A mailbox can override this list.</p>
+          <h2 className="font-semibold text-slate-700">Allowed sender domains</h2>
+          <p className="text-xs text-slate-500">Emails from other domains are sent back with a “domain not accepted” reply. Sub-domains are included (mail.client.com matches client.com). A mailbox can override this list.</p>
         </div>
         <span className="ml-auto whitespace-nowrap text-xs text-slate-400">{active} active</span>
       </div>
       {list.length > 0 && active === 0 && (
-        <p className="mx-5 mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">No active domains — every sender currently passes Rule 1.</p>
+        <p className="mx-5 mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">No active domains — emails from any sender are accepted.</p>
       )}
       <form className="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-4"
         onSubmit={(e) => { e.preventDefault(); if (!domain.includes(".")) { showError(null, "Enter a domain such as client.com"); return; } create.mutate(); }}>
@@ -78,7 +78,7 @@ function DomainSection() {
         </button>
       </form>
       {domains.isLoading ? <p className="px-5 py-6 text-sm text-slate-400">Loading…</p> : list.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-slate-400">No domains yet — every sender currently passes Rule 1.</p>
+        <p className="px-5 py-6 text-sm text-slate-400">No domains yet — emails from any sender are accepted.</p>
       ) : (
         <>
         <ul className="divide-y divide-slate-100">

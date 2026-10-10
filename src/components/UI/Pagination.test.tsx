@@ -5,14 +5,14 @@ import Pagination, { usePagination } from "@/components/UI/Pagination";
 afterEach(cleanup);
 
 describe("Pagination", () => {
-  it("shows the range, offers 5/10/15/20/50 rows and moves between pages", () => {
+  it("shows the range, offers 10/20/50/100 rows and moves between pages", () => {
     const calls: Array<[string, number]> = [];
-    render(<Pagination page={2} pageSize={5} total={22} label="emails"
+    render(<Pagination page={2} pageSize={10} total={45} label="emails"
       onPageChange={(p) => calls.push(["page", p])} onPageSizeChange={(s) => calls.push(["size", s])} />);
-    expect(screen.getByText("6–10")).toBeTruthy();
+    expect(screen.getByText("11–20")).toBeTruthy();
     expect(screen.getByText("Page 2 of 5")).toBeTruthy();
     const select = screen.getByLabelText("Rows per page") as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(["5", "10", "15", "20", "50"]);
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["10", "20", "50", "100"]);
     fireEvent.change(select, { target: { value: "20" } });
     fireEvent.click(screen.getByLabelText("Next page"));
     fireEvent.click(screen.getByLabelText("Last page"));
@@ -28,19 +28,19 @@ describe("Pagination", () => {
 });
 
 describe("usePagination", () => {
-  it("slices client-side lists, 5 rows by default", () => {
-    const items = Array.from({ length: 12 }, (_, i) => i + 1);
+  it("slices client-side lists, 10 rows by default", () => {
+    const items = Array.from({ length: 25 }, (_, i) => i + 1);
     const { result } = renderHook(() => usePagination(items));
-    expect(result.current.rows).toEqual([1, 2, 3, 4, 5]);
-    act(() => result.current.props.onPageChange(3));
-    expect(result.current.rows).toEqual([11, 12]);
-    act(() => result.current.props.onPageSizeChange(10));
     expect(result.current.rows).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    act(() => result.current.props.onPageChange(3));
+    expect(result.current.rows).toEqual([21, 22, 23, 24, 25]);
+    act(() => result.current.props.onPageSizeChange(20));
+    expect(result.current.rows).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
     expect(result.current.props.page).toBe(1);
   });
 
   it("stays on a valid page when the list shrinks", () => {
-    const { result, rerender } = renderHook(({ items }) => usePagination(items), { initialProps: { items: [1, 2, 3, 4, 5, 6] } });
+    const { result, rerender } = renderHook(({ items }) => usePagination(items), { initialProps: { items: Array.from({ length: 12 }, (_, i) => i + 1) } });
     act(() => result.current.props.onPageChange(2));
     rerender({ items: [1, 2, 3] });
     expect(result.current.rows).toEqual([1, 2, 3]);

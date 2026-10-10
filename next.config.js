@@ -12,7 +12,8 @@ const contentSecurityPolicy = [
   "img-src 'self' data: https:",
   "font-src 'self' data:",
   `connect-src 'self' ${apiUrl} ${wsUrl}`,
-  "frame-src 'self'",
+  // blob: lets the email page preview a fetched PDF inline.
+  "frame-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -29,6 +30,8 @@ const securityHeaders = [
 const nextConfig = {
   // Required by the Dockerfile's runner stage (copies .next/standalone).
   output: "standalone",
+  // A separate folder lets a verification build run without touching a running `next dev` (.next).
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

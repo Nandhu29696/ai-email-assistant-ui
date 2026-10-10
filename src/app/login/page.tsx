@@ -13,7 +13,7 @@ interface LoginResponse {
   user_id: number;
   username: string;
   full_name?: string | null;
-  role: "admin" | "client";
+  role: "admin" | "client" | "user";
   access_token?: string;
   refresh_token?: string;
   mfa_enabled?: boolean;

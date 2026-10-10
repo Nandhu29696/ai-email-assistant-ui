@@ -4,7 +4,8 @@
 
 @layer base {
   html {
-    font-family: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    /* The fallback inside var() keeps a clean sans-serif even if the Inter variable is missing. */
+    font-family: var(--font-inter, "Inter"), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

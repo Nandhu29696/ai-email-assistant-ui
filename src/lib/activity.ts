@@ -12,9 +12,10 @@ export interface NotificationPrefs {
   popups: boolean;        // in-app pop-ups
   desktop: boolean;       // browser/OS notifications (needs permission)
   level: NotifyLevel;     // "important" = needs attention, rejected, critical/high priority
+  mailboxes: number[];    // only these mailboxes; empty = every mailbox
 }
 
-export const DEFAULT_PREFS: NotificationPrefs = { popups: true, desktop: false, level: "all" };
+export const DEFAULT_PREFS: NotificationPrefs = { popups: true, desktop: false, level: "all", mailboxes: [] };
 const PREFS_KEY = "mailai.notifications.prefs";
 const READ_KEY = "mailai.notifications.read";
 
@@ -26,6 +27,8 @@ export interface ActivityNotice {
   href: string;
   at: string | null;
   important: boolean;
+  mailboxId: number | null;
+  mailbox: string | null;  // mailbox that received the email
 }
 
 /** Turn a finished email into a notification. */
@@ -36,13 +39,13 @@ export function describe(item: BatchItem): ActivityNotice {
   let title: string;
   let tone: ActivityNotice["tone"];
   if (item.status === "FAILED") {
-    title = "Email needs attention";
+    title = "Email needs attention — try again";
     tone = "error";
   } else if (item.status === "SUCCESS") {
-    title = urgent ? `Processed · ${item.priority} priority` : "Email processed";
+    title = urgent ? `PDF ready · ${item.priority} priority` : "PDF ready";
     tone = urgent ? "warning" : "success";
   } else if (item.status === "REJECTED") {
-    title = `Rejected · ${outcomeLabel(item.outcome)}`;
+    title = `Sent back · ${outcomeLabel(item.outcome)}`;
     tone = "warning";
   } else {
     title = outcomeLabel(item.outcome);
@@ -51,7 +54,9 @@ export function describe(item: BatchItem): ActivityNotice {
   return {
     key: item.batch_no,
     title,
-    message: `${from} — ${subject}`,
+    message: item.mailbox_email ? `${item.mailbox_email} · ${from} — ${subject}` : `${from} — ${subject}`,
+    mailboxId: item.integration_id,
+    mailbox: item.mailbox_email,
     tone,
     href: `/emails?batch=${encodeURIComponent(item.batch_no)}`,
     at: item.processed_at,
@@ -60,6 +65,8 @@ export function describe(item: BatchItem): ActivityNotice {
 }
 
 export function shouldPopUp(notice: ActivityNotice, prefs: NotificationPrefs): boolean {
+  const mailboxes = prefs.mailboxes ?? [];
+  if (mailboxes.length > 0 && (notice.mailboxId === null || !mailboxes.includes(notice.mailboxId))) return false;
   return prefs.level === "all" || notice.important;
 }
 

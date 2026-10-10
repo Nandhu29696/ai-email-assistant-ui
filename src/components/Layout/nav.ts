@@ -1,13 +1,15 @@
 import {
-  Inbox, LayoutDashboard, ListChecks, Mail, ScrollText, Settings, ShieldCheck,
+  Inbox, LayoutDashboard, ListChecks, Mail, ScrollText, Settings, ShieldCheck, Users,
 } from "lucide-react";
+import type { UserRole } from "@/types";
 
 export interface NavItem {
   href: string;
   label: string;
   description: string;
   icon: typeof Mail;
-  admin?: boolean;
+  /** Only these roles see the page (default: everyone signed in). */
+  roles?: UserRole[];
 }
 
 export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
@@ -28,17 +30,22 @@ export const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
   {
     title: "Admin",
     items: [
-      { href: "/admin", label: "Users & jobs", description: "Users, alerts and failed background jobs", icon: ShieldCheck, admin: true },
-      { href: "/logs", label: "Logs", description: "Audit trail and API requests", icon: ScrollText, admin: true },
+      { href: "/admin", label: "Users & jobs", description: "Users, alerts and failed background jobs", icon: ShieldCheck, roles: ["admin"] },
+      { href: "/logs", label: "Logs", description: "Audit trail and API requests", icon: ScrollText, roles: ["admin"] },
     ],
   },
   {
     title: "Account",
     items: [
+      { href: "/team", label: "Team", description: "Users who work with your mailboxes", icon: Users, roles: ["client"] },
       { href: "/settings", label: "Settings", description: "Password, two-factor, sessions and notifications", icon: Settings },
     ],
   },
 ];
+
+export function canSee(item: Pick<NavItem, "roles">, role: UserRole | undefined): boolean {
+  return !item.roles || (!!role && item.roles.includes(role));
+}
 
 export function findNav(pathname: string): (NavItem & { group: string }) | undefined {
   for (const group of NAV_GROUPS) {

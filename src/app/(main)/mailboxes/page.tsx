@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,7 @@ import { AlertCircle, CheckCircle2, Mail, Pencil, RefreshCw, Trash2, X, Zap } fr
 import api from "@/lib/api";
 import { showError, showInfo, showSuccess } from "@/lib/notifications";
 import { useAuthStore } from "@/store/authStore";
-import type { Integration, UserOut } from "@/types";
+import type { DashboardSummary, Integration, MailboxStat, UserOut } from "@/types";
 import { formatDate, timeAgo } from "@/lib/utils";
 import ImapConnectForm from "@/components/Integrations/ImapConnectForm";
 import PageHeader from "@/components/UI/PageHeader";
@@ -58,6 +59,14 @@ function MailboxesView() {
     queryFn: () => api.get("/api/integrations").then((r) => r.data),
     refetchInterval: 30_000,
   });
+  // Per-mailbox email counts for the last 30 days (same numbers as the dashboard table).
+  const stats = useQuery<DashboardSummary>({
+    queryKey: ["dashboard-summary", 30, ""],
+    queryFn: () => api.get("/api/dashboard/summary", { params: { days: 30 } }).then((r) => r.data),
+    refetchInterval: 60_000,
+  });
+  const statFor = (id: number) => stats.data?.by_mailbox.find((s) => s.id === id);
+
   const clients = useQuery<UserOut[]>({
     queryKey: ["admin-users", "client"],
     queryFn: () => api.get("/api/admin/users?role=client&is_active=true").then((r) => r.data),
@@ -129,8 +138,11 @@ function MailboxesView() {
               {m.health_status === "error" && m.health_message && (
                 <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{m.health_message} — reconnect the mailbox to fix this.</p>
               )}
+              <MailboxCounts stat={statFor(m.id)} mailboxId={m.id} />
               <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <Item label="Client">{statFor(m.id)?.owner ?? "Unassigned"}</Item>
                 <Item label="Last checked">{timeAgo(m.last_sync_at)}</Item>
+                <Item label="Checks for new email">every {formatInterval(m.pickup_interval_seconds ?? 60)}{m.fetch_interval_seconds ? "" : " (default)"}</Item>
                 <Item label="Last email processed">{timeAgo(m.last_email_processed_at)}</Item>
                 <Item label="Accepted files">{(m.allowed_extensions || DEFAULT_EXTENSIONS).split(",").map((e) => `.${e}`).join(" ")} · {m.max_file_size_mb ?? 25} MB</Item>
                 <Item label="Sender domains">{m.allowed_sender_domains ? m.allowed_sender_domains.split(",").join(", ") : "Global list (Rules & replies)"}</Item>
@@ -155,6 +167,13 @@ function MailboxesView() {
   );
 }
 
+/** 45 -> "45 s", 120 -> "2 min", 150 -> "2 min 30 s" */
+function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const min = Math.floor(seconds / 60), sec = seconds % 60;
+  return sec ? `${min} min ${sec} s` : `${min} min`;
+}
+
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -172,6 +191,7 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
   const [prefix, setPrefix] = useState(mailbox.batch_prefix ?? "");
   const [type, setType] = useState(mailbox.mailbox_type ?? "PROD");
   const [retention, setRetention] = useState(mailbox.retention_days ?? 90);
+  const [interval, setInterval_] = useState<string>(mailbox.fetch_interval_seconds ? String(mailbox.fetch_interval_seconds) : "");
   const [owner, setOwner] = useState<string>(mailbox.owner_user_id ? String(mailbox.owner_user_id) : "");
 
   const save = useMutation({
@@ -179,6 +199,7 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
       allowed_extensions: extensions.join(","),
       max_file_size_mb: maxSize,
       retention_days: retention,
+      fetch_interval_seconds: interval.trim() ? Number(interval) : null,
       allowed_sender_domains: domains.trim() || null,
       batch_prefix: prefix.trim() || null,
       mailbox_type: type,
@@ -192,8 +213,10 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={onClose}>
-      <form role="dialog" aria-label="Mailbox rules" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (extensions.length === 0) { showError(null, "Choose at least one file type."); return; } save.mutate(); }}
-        className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+      <form role="dialog" aria-label="Mailbox rules" onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (extensions.length === 0) { showError(null, "Choose at least one file type."); return; }
+          if (interval.trim() && !(Number.isInteger(Number(interval)) && Number(interval) >= 15 && Number(interval) <= 3600)) { showError(null, "Pickup interval must be a whole number between 15 and 3600 seconds."); return; }
+          save.mutate(); }}
+        className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Mailbox rules</p>
@@ -204,7 +227,7 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
         </div>
 
         <fieldset>
-          <legend className="text-xs font-medium text-slate-600">Accepted file types (Rule 3)</legend>
+          <legend className="text-xs font-medium text-slate-600">Accepted file types</legend>
           <div className="mt-2 flex flex-wrap gap-3">
             {EXTENSIONS.map((ext) => (
               <label key={ext} className="flex items-center gap-1.5 text-sm text-slate-700">
@@ -216,10 +239,14 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
         </fieldset>
         <label className="block text-xs font-medium text-slate-600">Maximum size per file (MB)
           <input type="number" min={1} max={100} value={maxSize} onChange={(e) => setMaxSize(Number(e.target.value))} className={input} /></label>
+        <label className="block text-xs font-medium text-slate-600">Check for new email every (seconds)
+          <input type="number" min={15} max={3600} step={1} value={interval} onChange={(e) => setInterval_(e.target.value)}
+            placeholder={`Default: ${mailbox.default_pickup_interval_seconds ?? 60}`} className={input} />
+          <span className="mt-1 block font-normal text-slate-400">15–3600 seconds. A new email is picked up within this time; leave empty for the default.</span></label>
         <label className="block text-xs font-medium text-slate-600">Keep stored PDFs for (days)
           <input type="number" min={1} max={3650} value={retention} onChange={(e) => setRetention(Number(e.target.value))} className={input} />
           <span className="mt-1 block font-normal text-slate-400">After this, the email&apos;s PDFs are deleted automatically; its details and timeline stay.</span></label>
-        <label className="block text-xs font-medium text-slate-600">Allowed sender domains for this mailbox (Rule 1)
+        <label className="block text-xs font-medium text-slate-600">Allowed sender domains for this mailbox
           <input value={domains} onChange={(e) => setDomains(e.target.value)} placeholder="Leave empty to use the global list, e.g. client.com, partner.org" className={input} /></label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-xs font-medium text-slate-600">Reference prefix
@@ -241,6 +268,35 @@ function RulesModal({ mailbox, clients, isAdmin, onClose }: { mailbox: Integrati
           <button type="submit" disabled={save.isPending} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{save.isPending ? "Saving…" : "Save rules"}</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/** Last-30-day email counts for one mailbox; each number opens the matching emails. */
+function MailboxCounts({ stat, mailboxId }: { stat: MailboxStat | undefined; mailboxId: number }) {
+  const base = `/emails?mailbox=${mailboxId}`;
+  const cells: Array<[string, number | undefined, string, string]> = [
+    ["Received", stat?.total, base, "text-slate-800"],
+    ["PDF ready", stat?.processed, `${base}&status=SUCCESS`, "text-emerald-700"],
+    ["Sent back", stat?.rejected, `${base}&status=REJECTED`, "text-amber-700"],
+    ["Needs attention", stat?.needs_attention, `${base}&status=FAILED`, "text-red-600"],
+    ["Skipped", stat?.ignored, `${base}&status=IGNORED`, "text-slate-600"],
+    ["In progress", stat?.in_progress, `${base}&status=IN_PROGRESS`, "text-sky-700"],
+  ];
+  return (
+    <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Emails · last 30 days</p>
+        <Link href={base} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">View emails →</Link>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-6">
+        {cells.map(([label, value, href, tone]) => (
+          <Link key={label} href={href} className="rounded-lg bg-white px-2 py-2 ring-1 ring-slate-100 hover:ring-indigo-200">
+            <span className={`block text-lg font-bold ${value ? tone : "text-slate-300"}`}>{value ?? "–"}</span>
+            <span className="block text-[11px] text-slate-500">{label}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

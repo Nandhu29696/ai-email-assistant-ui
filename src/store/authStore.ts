@@ -9,7 +9,7 @@ export interface AuthUser {
   user_id:      number;
   username:     string;
   full_name:    string | null;
-  role:         "admin" | "client";
+  role:         "admin" | "client" | "user";
   mfa_enabled?: boolean;
   access_token?: string;
   refresh_token?: string;

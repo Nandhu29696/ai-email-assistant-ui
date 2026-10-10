@@ -11,7 +11,7 @@ import OpsAlertsPanel from "@/components/Admin/OpsAlertsPanel";
 import api from "@/lib/api";
 import LoadingSpinner from "@/components/UI/LoadingSpinner";
 import Pagination, { usePagination } from "@/components/UI/Pagination";
-import type { UserOut, SystemStats } from "@/types";
+import type { Integration, UserOut, SystemStats } from "@/types";
 import { showError, showSuccess } from "@/lib/notifications";
 import PageHeader from "@/components/UI/PageHeader";
 import { ShieldCheck as ShieldCheckIcon } from "lucide-react";
@@ -24,6 +24,49 @@ function useUsers(search: string, role: string) {
     queryKey: ["admin-users", search, role],
     queryFn: () => api.get(`/api/admin/users${qs ? `?${qs}` : ""}`).then(r => r.data),
   });
+}
+
+/** Active client accounts, for assigning a "user" to its client. */
+function useClients() {
+  return useQuery<UserOut[]>({
+    queryKey: ["admin-users", "", "client", "active"],
+    queryFn: () => api.get("/api/admin/users?role=client&is_active=true").then(r => r.data),
+  });
+}
+
+const ROLE_HELP: Record<string, string> = {
+  admin: "Everything: all mailboxes, users, rules, logs.",
+  client: "A customer account: its own mailboxes, and it can add users for its team.",
+  user: "Staff of one client: works with that client's mailboxes; cannot manage logins.",
+};
+
+function RoleFields({ role, clientId, onRole, onClient }: {
+  role: string; clientId: string; onRole: (r: string) => void; onClient: (id: string) => void;
+}) {
+  const clients = useClients().data ?? [];
+  const field = "w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400";
+  return (
+    <>
+      <div>
+        <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
+        <select value={role} onChange={e => onRole(e.target.value)} className={field}>
+          <option value="admin">Admin</option>
+          <option value="client">Client</option>
+          <option value="user">User (belongs to a client)</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-400">{ROLE_HELP[role]}</p>
+      </div>
+      {role === "user" && (
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Client</label>
+          <select value={clientId} onChange={e => onClient(e.target.value)} className={field}>
+            <option value="">Choose a client…</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.full_name || c.username}</option>)}
+          </select>
+        </div>
+      )}
+    </>
+  );
 }
 
 function useSystemStats() {
@@ -53,17 +96,18 @@ function StatTile({ icon: Icon, label, value, color }: {
 // ── Register modal ─────────────────────────────────────────────
 
 function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState({ username: "", email: "", full_name: "", password: "", role: "client" });
+  const [form, setForm] = useState({ username: "", email: "", full_name: "", password: "", role: "client", client_id: "" });
   const [err, setErr] = useState("");
   const mutation = useMutation({
-    mutationFn: (data: typeof form) => api.post("/api/auth/register", data).then(r => r.data),
+    mutationFn: ({ client_id, ...data }: typeof form) =>
+      api.post("/api/auth/register", { ...data, client_id: data.role === "user" ? Number(client_id) : null }).then(r => r.data),
     onSuccess: () => { onSuccess(); onClose(); showSuccess("User created."); },
     onError: (e: unknown) => { setErr((e as Error).message ?? "Registration failed"); showError(e, "Registration failed."); },
   });
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 border border-slate-200">
         <h2 className="text-lg font-bold text-slate-900 mb-5">Create New User</h2>
         <div className="space-y-4">
           {[
@@ -83,17 +127,8 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
               />
             </div>
           ))}
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
-            <select
-              value={form.role}
-              onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              <option value="client">Client</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+          <RoleFields role={form.role} clientId={form.client_id}
+            onRole={role => setForm(f => ({ ...f, role }))} onClient={client_id => setForm(f => ({ ...f, client_id }))} />
 
           {err && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{err}</p>
@@ -106,7 +141,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
             </button>
             <button
               onClick={() => mutation.mutate(form)}
-              disabled={mutation.isPending || !form.username || !form.email || !form.password}
+              disabled={mutation.isPending || !form.username || !form.email || !form.password || (form.role === "user" && !form.client_id)}
               className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors disabled:opacity-60"
             >
               {mutation.isPending ? "Creating…" : "Create User"}
@@ -123,14 +158,16 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
 function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({
     full_name: user.full_name ?? "",
-    role: user.role,
+    role: user.role as string,
+    client_id: user.client_id ? String(user.client_id) : "",
     is_active: user.is_active,
     new_password: "",
   });
   const [err, setErr] = useState("");
   const mutation = useMutation({
-    mutationFn: (data: typeof form) => {
+    mutationFn: ({ client_id, ...data }: typeof form) => {
       const payload: Record<string, unknown> = { ...data };
+      if (data.role === "user" && client_id) payload.client_id = Number(client_id);
       if (!payload.new_password) delete payload.new_password;
       return api.patch(`/api/admin/users/${user.id}`, payload).then(r => r.data);
     },
@@ -140,7 +177,7 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-slate-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 border border-slate-200">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Edit User</h2>
         <p className="text-sm text-slate-500 mb-5">@{user.username}</p>
         <div className="space-y-4">
@@ -150,14 +187,8 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
               onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Role</label>
-            <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as "admin" | "client" }))}
-              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="client">Client</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+          <RoleFields role={form.role} clientId={form.client_id}
+            onRole={role => setForm(f => ({ ...f, role }))} onClient={client_id => setForm(f => ({ ...f, client_id }))} />
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">New Password (leave blank to keep)</label>
             <input type="password" value={form.new_password}
@@ -177,7 +208,7 @@ function EditModal({ user, onClose, onSuccess }: { user: UserOut; onClose: () =>
               className="flex-1 px-4 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
               Cancel
             </button>
-            <button onClick={() => mutation.mutate(form)} disabled={mutation.isPending}
+            <button onClick={() => mutation.mutate(form)} disabled={mutation.isPending || (form.role === "user" && !form.client_id)}
               className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-60">
               {mutation.isPending ? "Saving…" : "Save Changes"}
             </button>
@@ -199,6 +230,12 @@ export default function AdminPage() {
 
   const { data: users, isLoading } = useUsers(search, roleFilter);
   const userPage = usePagination(users);
+  // Which mailboxes each user owns — explains what a client can see.
+  const mailboxes = useQuery<Integration[]>({
+    queryKey: ["integrations"],
+    queryFn: () => api.get("/api/integrations").then((r) => r.data),
+  });
+  const mailboxesOf = (userId: number) => (mailboxes.data ?? []).filter((m) => m.owner_user_id === userId);
   const { data: stats }            = useSystemStats();
 
   const resetMfaMutation = useMutation({
@@ -261,6 +298,7 @@ export default function AdminPage() {
             <option value="">All Roles</option>
             <option value="admin">Admin</option>
             <option value="client">Client</option>
+            <option value="user">User</option>
           </select>
           <button
             onClick={() => setShowRegister(true)}
@@ -279,7 +317,7 @@ export default function AdminPage() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
-                  {["User", "Email", "Role", "Last Login", "Status", "Created", "Actions"].map(h => (
+                  {["User", "Email", "Role", "Mailboxes", "Last Login", "Status", "Created", "Actions"].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -303,11 +341,21 @@ export default function AdminPage() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${
                         u.role === "admin"
                           ? "text-purple-700 bg-purple-50 border-purple-200"
-                          : "text-indigo-700 bg-indigo-50 border-indigo-200"
+                          : u.role === "user"
+                            ? "text-teal-700 bg-teal-50 border-teal-200"
+                            : "text-indigo-700 bg-indigo-50 border-indigo-200"
                       }`}>
                         {u.role === "admin" ? <ShieldCheck size={10} className="inline mr-1" /> : null}
                         {u.role}
                       </span>
+                      {u.role === "user" && <p className="mt-0.5 text-[11px] text-slate-400">of {u.client_name ?? "— no client"}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600">
+                      {u.role === "admin" ? <span className="text-slate-400">All mailboxes</span>
+                        : u.role === "user" ? (mailboxesOf(u.client_id ?? -1).length === 0 ? <span className="text-slate-400">Client has none</span>
+                          : mailboxesOf(u.client_id ?? -1).map((m) => <span key={m.id} className="block truncate" title={`Via ${u.client_name}`}>{m.email_address}</span>))
+                        : mailboxesOf(u.id).length === 0 ? <span className="text-slate-400">None assigned</span>
+                          : mailboxesOf(u.id).map((m) => <span key={m.id} className="block truncate" title={m.email_address}>{m.email_address}</span>)}
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{fmtDate(u.last_login_at)}</td>
                     <td className="px-4 py-3">
@@ -355,7 +403,7 @@ export default function AdminPage() {
                   </tr>
                 ))}
                 {(users ?? []).length === 0 && (
-                  <tr><td colSpan={7} className="text-center py-12 text-slate-400">No users found</td></tr>
+                  <tr><td colSpan={8} className="text-center py-12 text-slate-400">No users found</td></tr>
                 )}
               </tbody>
             </table>

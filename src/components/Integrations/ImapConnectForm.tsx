@@ -45,7 +45,7 @@ export default function ImapConnectForm({ onConnected }: { onConnected: () => vo
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={() => setOpen(false)}>
           <form onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); connect.mutate(); }}
-            className="w-full max-w-2xl space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+            className="max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-900">Connect an IMAP mailbox</h2>
               <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
